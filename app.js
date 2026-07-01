@@ -388,9 +388,12 @@ function buildWhatsAppMessage(order = readOrderData()) {
 }
 
 function buildWhatsAppOrderItemLine(item, index) {
-  const firstLine = `${index + 1}. ${item.name} — ${formatMoney(item.price)} × ${item.quantity} =`;
-  const secondLine = formatMoney(item.total).padStart(36);
-  return `${firstLine}\n${secondLine}`;
+  const nameLine = `${index + 1}. ${item.name}`;
+  const formula = `   ${formatMoney(item.price)} × ${item.quantity} =`;
+  const lineTotal = formatMoney(item.total);
+  const spacesCount = Math.max(1, 36 - formula.length - lineTotal.length);
+  const calculationLine = `${formula}${" ".repeat(spacesCount)}${lineTotal}`;
+  return `${nameLine}\n${calculationLine}`;
 }
 
 function buildWhatsAppUrl(phone, message) {
@@ -499,11 +502,9 @@ function showToast(message) {
 function runSelfTests() {
   const testCart = new Map([["mercimek", 3], ["ayran", 1]]);
   const messageFormatCart = new Map([
+    ["mercimek", 6],
     ["iskender", 2],
-    ["pide", 6],
-    ["adana", 4],
-    ["lahmacun", 2],
-    ["dolma", 2]
+    ["pide", 6]
   ]);
   const quantityTestCart = new Map();
   for (let index = 0; index < 5; index += 1) {
@@ -551,7 +552,7 @@ function runSelfTests() {
     ["сообщение содержит ДОСТАВКА", deliveryMessage.includes("ДОСТАВКА")],
     ["доставка содержит адрес", deliveryMessage.includes("ул. Ленина, 10")],
     ["сообщение содержит позиции", preOrderMessage.includes("Мерджимек чорбасы") && preOrderMessage.includes("Айран")],
-    ["сообщение содержит двухстрочную формулу позиции", preOrderMessage.includes("320 ₽ × 3 =\n") && preOrderMessage.includes("960 ₽")],
+    ["сообщение содержит двухстрочную позицию", preOrderMessage.includes("1. Мерджимек чорбасы\n") && preOrderMessage.includes("320 ₽ × 3 =") && preOrderMessage.includes("960 ₽")],
     ["сообщение содержит сумму", preOrderMessage.includes(`Сумма: ${formatMoney(getCartTotal(testCart))}`)],
     ["сообщение содержит номер клиента", preOrderMessage.includes("Номер для связи: +79991234567")],
     ["номер клиента не используется как wa.me-ссылка", !preOrderMessage.includes("wa.me/79991234567")],
@@ -561,8 +562,10 @@ function runSelfTests() {
     ["изменение количества не вызывает renderMenu", !changeQuantity.toString().includes("renderMenu(")],
     ["сообщение содержит заголовок заказа", messageFormatExample.includes("*Заказ:*")],
     ["список заказа находится в monospace-блоке", messageFormatExample.includes(orderBlockMarker)],
-    ["первая строка позиции содержит формулу", orderBlock.includes("1. Искендер-кебаб — 690 ₽ × 2 =")],
-    ["итог позиции находится на следующей строке", orderBlockLines[1]?.trim().replace(/\u00a0/g, " ") === "1 380 ₽" && orderBlockLines[1].startsWith(" ")],
+    ["первая строка содержит только номер и название", orderBlockLines[0] === "1. Мерджимек чорбасы"],
+    ["расчёт находится на следующей строке", orderBlockLines[1]?.includes("320 ₽ × 6 =") && orderBlockLines[1]?.replace(/\u00a0/g, " ").includes("1 920 ₽")],
+    ["строка названия не содержит расчёт", !orderBlockLines[0]?.includes("320 ₽ × 6")],
+    ["строка названия не содержит знак равно", !orderBlockLines[0]?.includes("=")],
     ["между позициями нет пустых строк", !orderBlock.includes("\n\n")],
     ["сумма находится вне monospace-блока", messageFormatExample.indexOf("*Сумма:") > messageFormatExample.lastIndexOf("```")],
     ["номер клиента находится вне monospace-блока", messageFormatExample.indexOf("Номер для связи:") < messageFormatExample.indexOf("```")],
