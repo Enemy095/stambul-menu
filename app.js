@@ -8,7 +8,7 @@ const CONFIG = {
   cuisine: "Турецкая кухня",
   schedule: "с 10:00 до 23:00",
   whatsappPhone: DEFAULT_PHONE,
-  currencyText: "руб"
+  currencyText: "₽"
 };
 
 const MENU = Object.freeze([
@@ -44,6 +44,8 @@ const elements = {
   cartItems: document.querySelector("#cartItems"),
   cartTotal: document.querySelector("#cartTotal"),
   orderForm: document.querySelector("#orderForm"),
+  phoneField: document.querySelector("#phoneField"),
+  customerPhone: document.querySelector("#customerPhone"),
   addressField: document.querySelector("#addressField"),
   deliveryAddress: document.querySelector("#deliveryAddress"),
   customerName: document.querySelector("#customerName"),
@@ -111,12 +113,10 @@ function renderCategories() {
 }
 
 function renderMenu() {
-  const items = MENU.filter(item => state.category === "Все" || item.category === state.category);
-  elements.dishCount.textContent = `${items.length} ${plural(items.length, "позиция", "позиции", "позиций")}`;
-  elements.menuList.innerHTML = items.map(item => {
+  elements.menuList.innerHTML = MENU.map(item => {
     const quantity = state.cart.get(item.id) || 0;
     return `
-      <article class="dish-card">
+      <article class="dish-card" data-dish-id="${item.id}" data-category="${item.category}">
         <div class="dish-visual">
           <img src="${item.image}" alt="${item.name}" width="1000" height="750" loading="lazy">
         </div>
@@ -131,12 +131,13 @@ function renderMenu() {
         </div>
       </article>`;
   }).join("");
+  applyCategoryFilter();
 }
 
 function quantityControl(id, quantity) {
   return `<div class="quantity" aria-label="Количество">
     <button type="button" data-action="decrease" data-id="${id}" ${quantity === 0 ? "disabled" : ""} aria-label="Уменьшить количество">−</button>
-    <span>${quantity}</span>
+    <span data-quantity-value>${quantity}</span>
     <button type="button" data-action="increase" data-id="${id}" aria-label="Увеличить количество">+</button>
   </div>`;
 }
@@ -145,8 +146,31 @@ function handleCategoryClick(event) {
   const button = event.target.closest("[data-category]");
   if (!button) return;
   state.category = button.dataset.category;
-  renderCategories();
-  renderMenu();
+  elements.categories.querySelectorAll("[data-category]").forEach(categoryButton => {
+    categoryButton.classList.toggle("active", categoryButton.dataset.category === state.category);
+  });
+  applyCategoryFilter();
+}
+
+function applyCategoryFilter() {
+  let visibleCount = 0;
+  elements.menuList.querySelectorAll(".dish-card").forEach(card => {
+    const isVisible = state.category === "Все" || card.dataset.category === state.category;
+    card.classList.toggle("is-hidden", !isVisible);
+    if (isVisible) visibleCount += 1;
+  });
+  elements.dishCount.textContent = `${visibleCount} ${plural(visibleCount, "позиция", "позиции", "позиций")}`;
+}
+
+function updateDishCardQuantity(id) {
+  const card = elements.menuList.querySelector(`[data-dish-id="${id}"]`);
+  if (!card) return;
+  const quantity = state.cart.get(id) || 0;
+  const value = card.querySelector("[data-quantity-value]");
+  const decreaseButton = card.querySelector('[data-action="decrease"]');
+  if (value) value.textContent = quantity;
+  if (decreaseButton) decreaseButton.disabled = quantity === 0;
+  card.classList.toggle("is-selected", quantity > 0);
 }
 
 function handleQuantityClick(event) {
@@ -162,7 +186,7 @@ function changeQuantity(id, delta) {
   if (next === 0) state.cart.delete(id);
   else state.cart.set(id, next);
   saveState();
-  renderMenu();
+  updateDishCardQuantity(id);
   updateCartSummary();
   if (elements.backdrop.classList.contains("open")) renderCart();
 }
@@ -215,11 +239,12 @@ function renderCart() {
   const lines = getCartLines();
   elements.cartItems.innerHTML = lines.map(item => `
     <div class="cart-item">
-      <div>
-        <p>${item.name}</p>
-        <small>${formatMoney(item.price)} · ${formatMoney(item.total)}</small>
+      <div class="cart-item__main">
+        <p class="cart-item__name">${item.name}</p>
+        <small class="cart-item__formula">${formatMoney(item.price)} × ${item.quantity} =</small>
       </div>
-      <div class="cart-item-side">${quantityControl(item.id, item.quantity)}</div>
+      <strong class="cart-item__line-total">${formatMoney(item.total)}</strong>
+      <div class="cart-item__controls">${quantityControl(item.id, item.quantity)}</div>
     </div>
   `).join("");
   updateCartSummary();
@@ -228,8 +253,10 @@ function renderCart() {
 
 function clearCart() {
   state.cart.clear();
+  elements.customerPhone.value = "";
+  elements.phoneField.classList.remove("invalid");
   saveState();
-  renderMenu();
+  MENU.forEach(item => updateDishCardQuantity(item.id));
   updateCartSummary();
   closeCart();
   showToast("Корзина очищена");
@@ -244,6 +271,9 @@ function handleFormChange(event) {
 }
 
 function handleFormInput(event) {
+  if (event.target === elements.customerPhone) {
+    elements.phoneField.classList.remove("invalid");
+  }
   if (event.target === elements.deliveryAddress) {
     elements.addressField.classList.remove("invalid");
   }
@@ -261,6 +291,7 @@ function updateOrderTypeUI() {
 function readOrderData() {
   return {
     type: state.selectedOrderType,
+    customerPhone: elements.customerPhone.value.trim(),
     customerName: elements.customerName.value.trim(),
     guestCount: elements.guestCount.value.trim(),
     deliveryAddress: elements.deliveryAddress.value.trim(),
@@ -273,8 +304,17 @@ function validateOrder(order = readOrderData()) {
   if (getCartCount(order.cart) === 0) {
     return { valid: false, field: "cart", message: "Добавьте хотя бы одно блюдо" };
   }
+  if (!["Предзаказ", "Доставка", "Самовывоз"].includes(order.type)) {
+    return { valid: false, field: "orderType", message: "Выберите тип заказа" };
+  }
+  if (!normalizeCustomerPhone(order.customerPhone)) {
+    return { valid: false, field: "customerPhone", message: "Укажите корректный номер для связи" };
+  }
   if (order.type === "Доставка" && !order.deliveryAddress) {
     return { valid: false, field: "deliveryAddress", message: "Укажите адрес доставки" };
+  }
+  if (!normalizePhone(CONFIG.whatsappPhone)) {
+    return { valid: false, field: "managerPhone", message: "Не задан номер менеджера" };
   }
   return { valid: true };
 }
@@ -284,7 +324,10 @@ function sendOrder(event) {
   const order = readOrderData();
   const validation = validateOrder(order);
   if (!validation.valid) {
-    if (validation.field === "deliveryAddress") {
+    if (validation.field === "customerPhone") {
+      elements.phoneField.classList.add("invalid");
+      elements.customerPhone.focus();
+    } else if (validation.field === "deliveryAddress") {
       elements.addressField.classList.add("invalid");
       elements.deliveryAddress.focus();
     }
@@ -297,17 +340,18 @@ function sendOrder(event) {
 
 function buildWhatsAppMessage(order = readOrderData()) {
   const orderLines = getCartLines(order.cart).map((item, index) =>
-    `${index + 1}. ${item.name} — ${item.quantity} шт. × ${item.price} ${CONFIG.currencyText} = ${item.total} ${CONFIG.currencyText}`
+    `${index + 1}. ${item.name} — ${formatMoney(item.price)} × ${item.quantity} = ${formatMoney(item.total)}`
   ).join("\n");
   const details = [
     `*Тип заказа: ${order.type.toUpperCase()}*`,
+    `Номер для связи: ${normalizeCustomerPhone(order.customerPhone)}`,
     order.customerName ? `Имя: ${order.customerName}` : "",
     order.guestCount ? `Количество гостей: ${order.guestCount}` : "",
     order.type === "Доставка" && order.deliveryAddress ? `Адрес доставки: ${order.deliveryAddress}` : ""
   ].filter(Boolean).join("\n");
   const comment = order.orderComment ? `\n\nКомментарий: ${order.orderComment}` : "";
 
-  return `*${CONFIG.restaurantName}*\n*Заказ с электронного меню*\n\n${details}\n\n*Заказ:*\n${orderLines}${comment}\n\n*Сумма: ${getCartTotal(order.cart)} ${CONFIG.currencyText}*`;
+  return `*${CONFIG.restaurantName}*\n*Заказ с электронного меню*\n\n${details}\n\n*Заказ:*\n${orderLines}${comment}\n\n*Сумма: ${formatMoney(getCartTotal(order.cart))}*`;
 }
 
 function buildWhatsAppUrl(phone, message) {
@@ -318,6 +362,16 @@ function normalizePhone(phone) {
   return String(phone || "").replace(/[^\d]/g, "");
 }
 
+function normalizeCustomerPhone(value) {
+  let digits = String(value || "").replace(/[^\d]/g, "");
+  if (digits.length === 11 && digits.startsWith("8")) {
+    digits = `7${digits.slice(1)}`;
+  } else if (digits.length === 10) {
+    digits = `7${digits}`;
+  }
+  return /^7\d{10}$/.test(digits) ? `+${digits}` : "";
+}
+
 function formatMoney(value) {
   return `${Number(value).toLocaleString("ru-RU")} ${CONFIG.currencyText}`;
 }
@@ -326,6 +380,7 @@ function saveState() {
   const data = {
     cart: Object.fromEntries(state.cart),
     selectedOrderType: state.selectedOrderType,
+    customerPhone: elements.customerPhone.value,
     customerName: elements.customerName.value,
     guestCount: elements.guestCount.value,
     deliveryAddress: elements.deliveryAddress.value,
@@ -363,6 +418,7 @@ function restoreState() {
     });
   }
   state.savedFields = {
+    customerPhone: typeof saved.customerPhone === "string" ? saved.customerPhone : "",
     customerName: typeof saved.customerName === "string" ? saved.customerName : "",
     guestCount: typeof saved.guestCount === "string" ? saved.guestCount : "",
     deliveryAddress: typeof saved.deliveryAddress === "string" ? saved.deliveryAddress : "",
@@ -372,6 +428,7 @@ function restoreState() {
 
 function restoreFormFields() {
   const saved = state.savedFields || {};
+  elements.customerPhone.value = saved.customerPhone || "";
   elements.customerName.value = saved.customerName || "";
   elements.guestCount.value = saved.guestCount || "";
   elements.deliveryAddress.value = saved.deliveryAddress || "";
@@ -395,9 +452,10 @@ function showToast(message) {
 }
 
 function runSelfTests() {
-  const testCart = new Map([["mercimek", 2], ["ayran", 1]]);
+  const testCart = new Map([["mercimek", 3], ["ayran", 1]]);
   const baseOrder = {
     type: "Предзаказ",
+    customerPhone: "+7 (929) 123-45-67",
     customerName: "",
     guestCount: "",
     deliveryAddress: "",
@@ -411,8 +469,16 @@ function runSelfTests() {
   const tests = [
     ["normalizePhone форматирует номер", normalizePhone("+7 (929) 297-99-37") === "79292979937"],
     ["normalizePhone сохраняет цифры", normalizePhone("79292979937") === "79292979937"],
-    ["formatMoney форматирует рубли", formatMoney(1490).replace(/\u00a0/g, " ").includes("1 490") && formatMoney(1490).includes("руб")],
+    ["номер клиента нормализуется из +7", normalizeCustomerPhone("+7 (929) 123-45-67") === "+79291234567"],
+    ["номер клиента нормализуется из 8", normalizeCustomerPhone("8 929 123-45-67") === "+79291234567"],
+    ["номер клиента нормализуется из 7", normalizeCustomerPhone("79291234567") === "+79291234567"],
+    ["номер клиента нормализуется из 10 цифр", normalizeCustomerPhone("9291234567") === "+79291234567"],
+    ["короткий номер клиента отклоняется", normalizeCustomerPhone("123") === ""],
+    ["formatMoney форматирует рубли со знаком ₽", formatMoney(1800).replace(/\u00a0/g, " ") === "1 800 ₽"],
     ["пустую корзину нельзя отправить", !validateOrder(emptyOrder).valid],
+    ["пустой номер клиента отклоняется", !validateOrder({ ...baseOrder, customerPhone: "" }).valid],
+    ["невалидный номер клиента отклоняется", !validateOrder({ ...baseOrder, customerPhone: "123" }).valid],
+    ["валидный номер клиента проходит проверку", validateOrder(baseOrder).valid],
     ["доставка требует адрес", !validateOrder({ ...deliveryOrder, deliveryAddress: "" }).valid],
     ["предзаказ проходит валидацию", validateOrder(baseOrder).valid],
     ["самовывоз проходит валидацию", validateOrder({ ...baseOrder, type: "Самовывоз" }).valid],
@@ -422,7 +488,12 @@ function runSelfTests() {
     ["сообщение содержит ДОСТАВКА", deliveryMessage.includes("ДОСТАВКА")],
     ["доставка содержит адрес", deliveryMessage.includes("ул. Ленина, 10")],
     ["сообщение содержит позиции", preOrderMessage.includes("Мерджимек чорбасы") && preOrderMessage.includes("Айран")],
-    ["сообщение содержит сумму", preOrderMessage.includes(`Сумма: ${getCartTotal(testCart)} руб`)],
+    ["сообщение содержит формулу позиции", preOrderMessage.includes("320 ₽ × 3 = 960 ₽")],
+    ["сообщение содержит сумму", preOrderMessage.includes(`Сумма: ${formatMoney(getCartTotal(testCart))}`)],
+    ["сообщение содержит номер клиента", preOrderMessage.includes("Номер для связи: +79291234567")],
+    ["номер клиента не используется как wa.me-ссылка", !preOrderMessage.includes("wa.me/+79291234567")],
+    ["номер клиента не используется как URL", !preOrderMessage.includes("https://wa.me/+79291234567")],
+    ["заказ отправляется менеджеру", buildWhatsAppUrl(CONFIG.whatsappPhone, "Заказ").startsWith(`https://wa.me/${DEFAULT_PHONE}?text=`)],
     ["WhatsApp URL кодирует текст", buildWhatsAppUrl(DEFAULT_PHONE, "Тест заказа") === `https://wa.me/${DEFAULT_PHONE}?text=${encodeURIComponent("Тест заказа")}`]
   ];
   const passed = tests.filter(([, result]) => result).length;

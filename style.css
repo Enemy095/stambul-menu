@@ -232,6 +232,7 @@ main { width: min(100%, 760px); margin: auto; padding: 14px 14px 115px; }
   background: rgba(255,253,248,.94);
   box-shadow: 0 8px 24px rgba(75,16,24,.06);
 }
+.dish-card.is-hidden { display: none; }
 .dish-visual {
   position: relative;
   overflow: hidden;
@@ -403,15 +404,31 @@ main { width: min(100%, 760px); margin: auto; padding: 14px 14px 115px; }
 .cart-item {
   display: grid;
   grid-template-columns: minmax(0,1fr) auto;
-  gap: 9px;
+  grid-template-areas:
+    "main total"
+    "controls controls";
+  gap: 9px 12px;
   align-items: center;
   padding: 11px 12px;
   border-radius: 16px;
   background: var(--cream);
 }
-.cart-item p { margin: 0 0 3px; font-size: 16px; font-weight: 700; }
-.cart-item small { color: var(--muted); font: 12px Arial, sans-serif; }
-.cart-item-side { display: flex; align-items: center; gap: 8px; }
+.cart-item__main { grid-area: main; min-width: 0; }
+.cart-item__name { margin: 0 0 3px; font-size: 16px; font-weight: 700; }
+.cart-item__formula { color: var(--muted); font: 12px Arial, sans-serif; }
+.cart-item__line-total {
+  grid-area: total;
+  justify-self: end;
+  color: var(--burgundy-dark);
+  text-align: right;
+  white-space: nowrap;
+}
+.cart-item__controls {
+  display: flex;
+  grid-area: controls;
+  justify-self: end;
+  align-items: center;
+}
 .cart-item .quantity { background: var(--milk); }
 .cart-item .quantity button { width: 38px; height: 38px; font-size: 20px; }
 .cart-item .quantity { grid-template-columns: 38px 25px 38px; }
