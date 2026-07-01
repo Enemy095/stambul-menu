@@ -373,9 +373,8 @@ function sendOrder(event) {
 }
 
 function buildWhatsAppMessage(order = readOrderData()) {
-  const orderLines = getCartLines(order.cart).map((item, index) =>
-    `${index + 1}. ${item.name} — ${formatMoney(item.price)} × ${item.quantity} = ${formatMoney(item.total)}`
-  ).join("\n");
+  const orderLines = getCartLines(order.cart).map(buildWhatsAppOrderItemLine).join("\n");
+  const codeFence = "```";
   const details = [
     `*Тип заказа: ${order.type.toUpperCase()}*`,
     `Номер для связи: ${normalizeCustomerPhone(order.customerPhone)}`,
@@ -385,7 +384,13 @@ function buildWhatsAppMessage(order = readOrderData()) {
   ].filter(Boolean).join("\n");
   const comment = order.orderComment ? `\n\nКомментарий: ${order.orderComment}` : "";
 
-  return `*${CONFIG.restaurantName}*\n*Заказ с электронного меню*\n\n${details}\n\n*Заказ:*\n${orderLines}${comment}\n\n*Сумма: ${formatMoney(getCartTotal(order.cart))}*`;
+  return `*${CONFIG.restaurantName}*\n*Заказ с электронного меню*\n\n${details}\n\n*Заказ:*\n${codeFence}\n${orderLines}\n${codeFence}${comment}\n\n*Сумма: ${formatMoney(getCartTotal(order.cart))}*`;
+}
+
+function buildWhatsAppOrderItemLine(item, index) {
+  const firstLine = `${index + 1}. ${item.name} — ${formatMoney(item.price)} × ${item.quantity} =`;
+  const secondLine = formatMoney(item.total).padStart(36);
+  return `${firstLine}\n${secondLine}`;
 }
 
 function buildWhatsAppUrl(phone, message) {
@@ -493,6 +498,13 @@ function showToast(message) {
 
 function runSelfTests() {
   const testCart = new Map([["mercimek", 3], ["ayran", 1]]);
+  const messageFormatCart = new Map([
+    ["iskender", 2],
+    ["pide", 6],
+    ["adana", 4],
+    ["lahmacun", 2],
+    ["dolma", 2]
+  ]);
   const quantityTestCart = new Map();
   for (let index = 0; index < 5; index += 1) {
     updateCartQuantity(quantityTestCart, "mercimek", 1);
@@ -510,6 +522,11 @@ function runSelfTests() {
   const emptyOrder = { ...baseOrder, cart: new Map() };
   const preOrderMessage = buildWhatsAppMessage(baseOrder);
   const deliveryMessage = buildWhatsAppMessage(deliveryOrder);
+  const messageFormatOrder = { ...baseOrder, customerName: "Пор", cart: messageFormatCart };
+  const messageFormatExample = buildWhatsAppMessage(messageFormatOrder);
+  const orderBlockMarker = "*Заказ:*\n```\n";
+  const orderBlock = messageFormatExample.split(orderBlockMarker)[1]?.split("\n```")[0] || "";
+  const orderBlockLines = orderBlock.split("\n");
   const tests = [
     ["normalizePhone форматирует номер", normalizePhone("+7 (929) 297-99-37") === "79292979937"],
     ["normalizePhone сохраняет цифры", normalizePhone("79292979937") === "79292979937"],
@@ -534,7 +551,7 @@ function runSelfTests() {
     ["сообщение содержит ДОСТАВКА", deliveryMessage.includes("ДОСТАВКА")],
     ["доставка содержит адрес", deliveryMessage.includes("ул. Ленина, 10")],
     ["сообщение содержит позиции", preOrderMessage.includes("Мерджимек чорбасы") && preOrderMessage.includes("Айран")],
-    ["сообщение содержит формулу позиции", preOrderMessage.includes("320 ₽ × 3 = 960 ₽")],
+    ["сообщение содержит двухстрочную формулу позиции", preOrderMessage.includes("320 ₽ × 3 =\n") && preOrderMessage.includes("960 ₽")],
     ["сообщение содержит сумму", preOrderMessage.includes(`Сумма: ${formatMoney(getCartTotal(testCart))}`)],
     ["сообщение содержит номер клиента", preOrderMessage.includes("Номер для связи: +79991234567")],
     ["номер клиента не используется как wa.me-ссылка", !preOrderMessage.includes("wa.me/79991234567")],
@@ -542,6 +559,13 @@ function runSelfTests() {
     ["заказ отправляется менеджеру", buildWhatsAppUrl(CONFIG.whatsappPhone, "Заказ").startsWith(`https://wa.me/${DEFAULT_PHONE}?text=`)],
     ["пять увеличений дают количество пять", quantityTestCart.get("mercimek") === 5],
     ["изменение количества не вызывает renderMenu", !changeQuantity.toString().includes("renderMenu(")],
+    ["сообщение содержит заголовок заказа", messageFormatExample.includes("*Заказ:*")],
+    ["список заказа находится в monospace-блоке", messageFormatExample.includes(orderBlockMarker)],
+    ["первая строка позиции содержит формулу", orderBlock.includes("1. Искендер-кебаб — 690 ₽ × 2 =")],
+    ["итог позиции находится на следующей строке", orderBlockLines[1]?.trim().replace(/\u00a0/g, " ") === "1 380 ₽" && orderBlockLines[1].startsWith(" ")],
+    ["между позициями нет пустых строк", !orderBlock.includes("\n\n")],
+    ["сумма находится вне monospace-блока", messageFormatExample.indexOf("*Сумма:") > messageFormatExample.lastIndexOf("```")],
+    ["номер клиента находится вне monospace-блока", messageFormatExample.indexOf("Номер для связи:") < messageFormatExample.indexOf("```")],
     ["WhatsApp URL кодирует текст", buildWhatsAppUrl(DEFAULT_PHONE, "Тест заказа") === `https://wa.me/${DEFAULT_PHONE}?text=${encodeURIComponent("Тест заказа")}`]
   ];
   const passed = tests.filter(([, result]) => result).length;
