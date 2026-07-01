@@ -391,7 +391,7 @@ function buildWhatsAppOrderItemLine(item, index) {
   const nameLine = `${index + 1}. ${item.name}`;
   const formula = `   ${formatMoney(item.price)} × ${item.quantity} =`;
   const lineTotal = formatMoney(item.total);
-  const spacesCount = Math.max(1, 36 - formula.length - lineTotal.length);
+  const spacesCount = Math.max(1, 34 - formula.length - lineTotal.length);
   const calculationLine = `${formula}${" ".repeat(spacesCount)}${lineTotal}`;
   return `${nameLine}\n${calculationLine}`;
 }
