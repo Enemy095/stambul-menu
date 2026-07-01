@@ -66,7 +66,9 @@ function init() {
   restoreFormFields();
   updateOrderTypeUI();
   updateCartSummary();
+  renderCart();
   bindEvents();
+  syncDesktopCart();
 
   if (new URLSearchParams(window.location.search).get("test") === "1") {
     runSelfTests();
@@ -93,6 +95,12 @@ function bindEvents() {
   elements.orderForm.addEventListener("input", handleFormInput);
   elements.orderForm.addEventListener("submit", sendOrder);
   elements.customerPhone.addEventListener("blur", handleCustomerPhoneBlur);
+  if (typeof window.matchMedia === "function") {
+    const desktopMedia = window.matchMedia("(min-width: 1024px)");
+    if (typeof desktopMedia.addEventListener === "function") {
+      desktopMedia.addEventListener("change", syncDesktopCart);
+    }
+  }
 }
 
 function applyQueryParams() {
@@ -206,7 +214,7 @@ function changeQuantity(id, delta) {
   saveState();
   updateDishCardQuantity(id);
   updateCartSummary();
-  if (elements.backdrop.classList.contains("open")) renderCart();
+  if (elements.backdrop.classList.contains("open") || isDesktopLayout()) renderCart();
 }
 
 function updateCartQuantity(cart, id, delta) {
@@ -243,6 +251,10 @@ function updateCartSummary() {
 }
 
 function openCart() {
+  if (isDesktopLayout()) {
+    renderCart();
+    return;
+  }
   if (getCartCount() === 0) {
     showToast("Добавьте хотя бы одно блюдо");
     return;
@@ -255,6 +267,11 @@ function openCart() {
 }
 
 function closeCart() {
+  if (isDesktopLayout()) {
+    elements.backdrop.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "";
+    return;
+  }
   if (!elements.backdrop.classList.contains("open")) return;
   elements.backdrop.classList.remove("open");
   elements.backdrop.setAttribute("aria-hidden", "true");
@@ -263,7 +280,7 @@ function closeCart() {
 
 function renderCart() {
   const lines = getCartLines();
-  elements.cartItems.innerHTML = lines.map(item => `
+  elements.cartItems.innerHTML = lines.length ? lines.map(item => `
     <div class="cart-item">
       <div class="cart-item__main">
         <p class="cart-item__name">${item.name}</p>
@@ -272,9 +289,14 @@ function renderCart() {
       <strong class="cart-item__line-total">${formatMoney(item.total)}</strong>
       <div class="cart-item__controls">${quantityControl(item.id, item.quantity)}</div>
     </div>
-  `).join("");
+  `).join("") : `
+    <div class="cart-empty">
+      <strong>Корзина пуста</strong>
+      <span>Добавьте блюда из меню</span>
+    </div>
+  `;
   updateCartSummary();
-  if (!lines.length) closeCart();
+  if (!lines.length && !isDesktopLayout()) closeCart();
 }
 
 function clearCart() {
@@ -284,8 +306,25 @@ function clearCart() {
   saveState();
   MENU.forEach(item => updateDishCardQuantity(item.id));
   updateCartSummary();
+  if (isDesktopLayout()) renderCart();
   closeCart();
   showToast("Корзина очищена");
+}
+
+function isDesktopLayout() {
+  return typeof window.matchMedia === "function" &&
+    window.matchMedia("(min-width: 1024px)").matches;
+}
+
+function syncDesktopCart() {
+  if (isDesktopLayout()) {
+    document.body.style.overflow = "";
+    elements.backdrop.classList.remove("open");
+    elements.backdrop.setAttribute("aria-hidden", "false");
+    renderCart();
+  } else if (!elements.backdrop.classList.contains("open")) {
+    elements.backdrop.setAttribute("aria-hidden", "true");
+  }
 }
 
 function handleFormChange(event) {
