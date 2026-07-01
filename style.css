@@ -275,7 +275,7 @@ main { width: min(100%, 760px); margin: auto; padding: 14px 14px 115px; }
 .price { color: var(--burgundy-dark); font-size: 17px; font-weight: 700; white-space: nowrap; }
 .quantity {
   display: grid;
-  grid-template-columns: 40px 27px 40px;
+  grid-template-columns: 42px 27px 42px;
   align-items: center;
   padding: 2px;
   border-radius: 22px;
@@ -283,8 +283,8 @@ main { width: min(100%, 760px); margin: auto; padding: 14px 14px 115px; }
 }
 .quantity button {
   display: grid;
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   padding: 0;
   place-items: center;
   border: 0;
@@ -292,6 +292,15 @@ main { width: min(100%, 760px); margin: auto; padding: 14px 14px 115px; }
   color: white;
   background: var(--burgundy);
   font: 22px/1 Arial, sans-serif;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+[data-action="increase"],
+[data-action="decrease"] {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
 }
 .quantity button:disabled { color: #ad9c93; background: transparent; cursor: default; }
 .quantity span { text-align: center; font: 700 14px Arial, sans-serif; }
@@ -430,8 +439,8 @@ main { width: min(100%, 760px); margin: auto; padding: 14px 14px 115px; }
   align-items: center;
 }
 .cart-item .quantity { background: var(--milk); }
-.cart-item .quantity button { width: 38px; height: 38px; font-size: 20px; }
-.cart-item .quantity { grid-template-columns: 38px 25px 38px; }
+.cart-item .quantity button { width: 42px; height: 42px; font-size: 20px; }
+.cart-item .quantity { grid-template-columns: 42px 25px 42px; }
 
 fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .order-type legend, .field > span { margin-bottom: 8px; font: 800 13px Arial, sans-serif; }
@@ -565,8 +574,8 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 @media (max-width: 350px) {
   .dish-card { grid-template-columns: 78px minmax(0,1fr); gap: 9px; }
   .dish-title { font-size: 17px; }
-  .quantity { grid-template-columns: 38px 22px 38px; }
-  .quantity button { width: 38px; height: 38px; }
+  .quantity { grid-template-columns: 42px 22px 42px; }
+  .quantity button { width: 42px; height: 42px; }
   .price { font-size: 15px; }
   .type-options span { font-size: 11px; }
 }

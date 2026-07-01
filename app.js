@@ -75,6 +75,8 @@ function init() {
 
 function bindEvents() {
   elements.categories.addEventListener("click", handleCategoryClick);
+  elements.menuList.addEventListener("pointerdown", handleQuantityPointerDown);
+  elements.cartItems.addEventListener("pointerdown", handleQuantityPointerDown);
   elements.menuList.addEventListener("click", handleQuantityClick);
   elements.cartItems.addEventListener("click", handleQuantityClick);
   document.querySelector("#headerCart").addEventListener("click", openCart);
@@ -90,6 +92,7 @@ function bindEvents() {
   elements.orderForm.addEventListener("change", handleFormChange);
   elements.orderForm.addEventListener("input", handleFormInput);
   elements.orderForm.addEventListener("submit", sendOrder);
+  elements.customerPhone.addEventListener("blur", handleCustomerPhoneBlur);
 }
 
 function applyQueryParams() {
@@ -173,22 +176,45 @@ function updateDishCardQuantity(id) {
   card.classList.toggle("is-selected", quantity > 0);
 }
 
+let lastQuantityPointerActionAt = 0;
+let lastQuantityPointerActionKey = "";
+
+function handleQuantityPointerDown(event) {
+  const button = event.target.closest("[data-action]");
+  if (!button || button.disabled || event.button > 0) return;
+  event.preventDefault();
+  lastQuantityPointerActionAt = Date.now();
+  lastQuantityPointerActionKey = `${button.dataset.action}:${button.dataset.id}`;
+  applyQuantityAction(button);
+}
+
 function handleQuantityClick(event) {
   const button = event.target.closest("[data-action]");
-  if (!button) return;
+  if (!button || button.disabled) return;
+  const actionKey = `${button.dataset.action}:${button.dataset.id}`;
+  if (actionKey === lastQuantityPointerActionKey && Date.now() - lastQuantityPointerActionAt < 500) return;
+  applyQuantityAction(button);
+}
+
+function applyQuantityAction(button) {
   changeQuantity(button.dataset.id, button.dataset.action === "increase" ? 1 : -1);
 }
 
 function changeQuantity(id, delta) {
   if (!MENU.some(item => item.id === id)) return;
-  const current = state.cart.get(id) || 0;
-  const next = Math.max(0, current + delta);
-  if (next === 0) state.cart.delete(id);
-  else state.cart.set(id, next);
+  updateCartQuantity(state.cart, id, delta);
   saveState();
   updateDishCardQuantity(id);
   updateCartSummary();
   if (elements.backdrop.classList.contains("open")) renderCart();
+}
+
+function updateCartQuantity(cart, id, delta) {
+  const current = cart.get(id) || 0;
+  const next = Math.max(0, current + delta);
+  if (next === 0) cart.delete(id);
+  else cart.set(id, next);
+  return next;
 }
 
 function getCartLines(cart = state.cart) {
@@ -277,6 +303,14 @@ function handleFormInput(event) {
   if (event.target === elements.deliveryAddress) {
     elements.addressField.classList.remove("invalid");
   }
+  saveState();
+}
+
+function handleCustomerPhoneBlur() {
+  const normalized = normalizeCustomerPhone(elements.customerPhone.value);
+  if (!normalized) return;
+  elements.customerPhone.value = formatCustomerPhoneForDisplay(normalized);
+  elements.phoneField.classList.remove("invalid");
   saveState();
 }
 
@@ -372,6 +406,12 @@ function normalizeCustomerPhone(value) {
   return /^7\d{10}$/.test(digits) ? `+${digits}` : "";
 }
 
+function formatCustomerPhoneForDisplay(phone) {
+  const normalized = normalizeCustomerPhone(phone);
+  if (!normalized) return "";
+  return normalized.replace(/^\+7(\d{3})(\d{3})(\d{2})(\d{2})$/, "+7 ($1) $2-$3-$4");
+}
+
 function formatMoney(value) {
   return `${Number(value).toLocaleString("ru-RU")} ${CONFIG.currencyText}`;
 }
@@ -453,9 +493,13 @@ function showToast(message) {
 
 function runSelfTests() {
   const testCart = new Map([["mercimek", 3], ["ayran", 1]]);
+  const quantityTestCart = new Map();
+  for (let index = 0; index < 5; index += 1) {
+    updateCartQuantity(quantityTestCart, "mercimek", 1);
+  }
   const baseOrder = {
     type: "Предзаказ",
-    customerPhone: "+7 (929) 123-45-67",
+    customerPhone: "+7 (999) 123-45-67",
     customerName: "",
     guestCount: "",
     deliveryAddress: "",
@@ -469,11 +513,13 @@ function runSelfTests() {
   const tests = [
     ["normalizePhone форматирует номер", normalizePhone("+7 (929) 297-99-37") === "79292979937"],
     ["normalizePhone сохраняет цифры", normalizePhone("79292979937") === "79292979937"],
-    ["номер клиента нормализуется из +7", normalizeCustomerPhone("+7 (929) 123-45-67") === "+79291234567"],
-    ["номер клиента нормализуется из 8", normalizeCustomerPhone("8 929 123-45-67") === "+79291234567"],
-    ["номер клиента нормализуется из 7", normalizeCustomerPhone("79291234567") === "+79291234567"],
-    ["номер клиента нормализуется из 10 цифр", normalizeCustomerPhone("9291234567") === "+79291234567"],
+    ["номер клиента нормализуется из +7", normalizeCustomerPhone("+7 (999) 123-45-67") === "+79991234567"],
+    ["номер клиента нормализуется из 8", normalizeCustomerPhone("8 999 123-45-67") === "+79991234567"],
+    ["номер клиента нормализуется из 7", normalizeCustomerPhone("79991234567") === "+79991234567"],
+    ["номер клиента нормализуется из 10 цифр", normalizeCustomerPhone("9991234567") === "+79991234567"],
+    ["номер клиента нормализуется с дефисами", normalizeCustomerPhone("8999-123-45-67") === "+79991234567"],
     ["короткий номер клиента отклоняется", normalizeCustomerPhone("123") === ""],
+    ["номер форматируется для поля", formatCustomerPhoneForDisplay("89991234567") === "+7 (999) 123-45-67"],
     ["formatMoney форматирует рубли со знаком ₽", formatMoney(1800).replace(/\u00a0/g, " ") === "1 800 ₽"],
     ["пустую корзину нельзя отправить", !validateOrder(emptyOrder).valid],
     ["пустой номер клиента отклоняется", !validateOrder({ ...baseOrder, customerPhone: "" }).valid],
@@ -490,10 +536,12 @@ function runSelfTests() {
     ["сообщение содержит позиции", preOrderMessage.includes("Мерджимек чорбасы") && preOrderMessage.includes("Айран")],
     ["сообщение содержит формулу позиции", preOrderMessage.includes("320 ₽ × 3 = 960 ₽")],
     ["сообщение содержит сумму", preOrderMessage.includes(`Сумма: ${formatMoney(getCartTotal(testCart))}`)],
-    ["сообщение содержит номер клиента", preOrderMessage.includes("Номер для связи: +79291234567")],
-    ["номер клиента не используется как wa.me-ссылка", !preOrderMessage.includes("wa.me/+79291234567")],
-    ["номер клиента не используется как URL", !preOrderMessage.includes("https://wa.me/+79291234567")],
+    ["сообщение содержит номер клиента", preOrderMessage.includes("Номер для связи: +79991234567")],
+    ["номер клиента не используется как wa.me-ссылка", !preOrderMessage.includes("wa.me/79991234567")],
+    ["номер клиента не используется как tel-ссылка", !preOrderMessage.includes("tel:+79991234567")],
     ["заказ отправляется менеджеру", buildWhatsAppUrl(CONFIG.whatsappPhone, "Заказ").startsWith(`https://wa.me/${DEFAULT_PHONE}?text=`)],
+    ["пять увеличений дают количество пять", quantityTestCart.get("mercimek") === 5],
+    ["изменение количества не вызывает renderMenu", !changeQuantity.toString().includes("renderMenu(")],
     ["WhatsApp URL кодирует текст", buildWhatsAppUrl(DEFAULT_PHONE, "Тест заказа") === `https://wa.me/${DEFAULT_PHONE}?text=${encodeURIComponent("Тест заказа")}`]
   ];
   const passed = tests.filter(([, result]) => result).length;
