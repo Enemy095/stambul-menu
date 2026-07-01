@@ -406,18 +406,25 @@ function normalizePhone(phone) {
 
 function normalizeCustomerPhone(value) {
   let digits = String(value || "").replace(/[^\d]/g, "");
+  if (digits.startsWith("00")) {
+    digits = digits.slice(2);
+  }
   if (digits.length === 11 && digits.startsWith("8")) {
     digits = `7${digits.slice(1)}`;
-  } else if (digits.length === 10) {
+  } else if (digits.length === 10 && digits.startsWith("9")) {
     digits = `7${digits}`;
   }
-  return /^7\d{10}$/.test(digits) ? `+${digits}` : "";
+  const normalized = `+${digits}`;
+  return /^\+[1-9]\d{7,14}$/.test(normalized) ? normalized : "";
 }
 
 function formatCustomerPhoneForDisplay(phone) {
   const normalized = normalizeCustomerPhone(phone);
   if (!normalized) return "";
-  return normalized.replace(/^\+7(\d{3})(\d{3})(\d{2})(\d{2})$/, "+7 ($1) $2-$3-$4");
+  if (/^\+7\d{10}$/.test(normalized)) {
+    return normalized.replace(/^\+7(\d{3})(\d{3})(\d{2})(\d{2})$/, "+7 ($1) $2-$3-$4");
+  }
+  return normalized;
 }
 
 function formatMoney(value) {
@@ -523,6 +530,10 @@ function runSelfTests() {
   const emptyOrder = { ...baseOrder, cart: new Map() };
   const preOrderMessage = buildWhatsAppMessage(baseOrder);
   const deliveryMessage = buildWhatsAppMessage(deliveryOrder);
+  const ukOrder = { ...baseOrder, customerPhone: "+44 7911 123456" };
+  const uaOrder = { ...baseOrder, customerPhone: "+380501234567" };
+  const ukMessage = buildWhatsAppMessage(ukOrder);
+  const uaMessage = buildWhatsAppMessage(uaOrder);
   const messageFormatOrder = { ...baseOrder, customerName: "Пор", cart: messageFormatCart };
   const messageFormatExample = buildWhatsAppMessage(messageFormatOrder);
   const orderBlockMarker = "*Заказ:*\n```\n";
@@ -536,13 +547,32 @@ function runSelfTests() {
     ["номер клиента нормализуется из 7", normalizeCustomerPhone("79991234567") === "+79991234567"],
     ["номер клиента нормализуется из 10 цифр", normalizeCustomerPhone("9991234567") === "+79991234567"],
     ["номер клиента нормализуется с дефисами", normalizeCustomerPhone("8999-123-45-67") === "+79991234567"],
+    ["номер клиента нормализуется из 8 без разделителей", normalizeCustomerPhone("89991234567") === "+79991234567"],
+    ["номер Украины с плюсом нормализуется", normalizeCustomerPhone("+380501234567") === "+380501234567"],
+    ["номер Украины без плюса нормализуется", normalizeCustomerPhone("380501234567") === "+380501234567"],
+    ["номер Украины с 00 нормализуется", normalizeCustomerPhone("00380501234567") === "+380501234567"],
+    ["номер Англии с плюсом нормализуется", normalizeCustomerPhone("+447911123456") === "+447911123456"],
+    ["номер Англии без плюса нормализуется", normalizeCustomerPhone("447911123456") === "+447911123456"],
+    ["номер Англии с 00 нормализуется", normalizeCustomerPhone("00447911123456") === "+447911123456"],
+    ["номер США с плюсом нормализуется", normalizeCustomerPhone("+14155550123") === "+14155550123"],
+    ["номер США без плюса нормализуется", normalizeCustomerPhone("14155550123") === "+14155550123"],
+    ["номер Малайзии с плюсом нормализуется", normalizeCustomerPhone("+60123456789") === "+60123456789"],
+    ["номер Малайзии без плюса нормализуется", normalizeCustomerPhone("60123456789") === "+60123456789"],
     ["короткий номер клиента отклоняется", normalizeCustomerPhone("123") === ""],
+    ["номер с нулевым кодом страны отклоняется", normalizeCustomerPhone("+0123456789") === ""],
+    ["буквы вместо номера отклоняются", normalizeCustomerPhone("abcdef") === ""],
+    ["неполный код России отклоняется", normalizeCustomerPhone("+7") === ""],
     ["номер форматируется для поля", formatCustomerPhoneForDisplay("89991234567") === "+7 (999) 123-45-67"],
+    ["международный номер остаётся компактным", formatCustomerPhoneForDisplay("+44 7911 123456") === "+447911123456"],
     ["formatMoney форматирует рубли со знаком ₽", formatMoney(1800).replace(/\u00a0/g, " ") === "1 800 ₽"],
     ["пустую корзину нельзя отправить", !validateOrder(emptyOrder).valid],
     ["пустой номер клиента отклоняется", !validateOrder({ ...baseOrder, customerPhone: "" }).valid],
     ["невалидный номер клиента отклоняется", !validateOrder({ ...baseOrder, customerPhone: "123" }).valid],
     ["валидный номер клиента проходит проверку", validateOrder(baseOrder).valid],
+    ["номер Украины проходит проверку", validateOrder(uaOrder).valid],
+    ["номер Англии проходит проверку", validateOrder(ukOrder).valid],
+    ["номер США проходит проверку", validateOrder({ ...baseOrder, customerPhone: "+14155550123" }).valid],
+    ["номер Малайзии проходит проверку", validateOrder({ ...baseOrder, customerPhone: "+60123456789" }).valid],
     ["доставка требует адрес", !validateOrder({ ...deliveryOrder, deliveryAddress: "" }).valid],
     ["предзаказ проходит валидацию", validateOrder(baseOrder).valid],
     ["самовывоз проходит валидацию", validateOrder({ ...baseOrder, type: "Самовывоз" }).valid],
@@ -555,6 +585,10 @@ function runSelfTests() {
     ["сообщение содержит двухстрочную позицию", preOrderMessage.includes("1. Мерджимек чорбасы\n") && preOrderMessage.includes("320 ₽ × 3 =") && preOrderMessage.includes("960 ₽")],
     ["сообщение содержит сумму", preOrderMessage.includes(`Сумма: ${formatMoney(getCartTotal(testCart))}`)],
     ["сообщение содержит номер клиента", preOrderMessage.includes("Номер для связи: +79991234567")],
+    ["сообщение содержит номер Англии", ukMessage.includes("Номер для связи: +447911123456")],
+    ["сообщение содержит номер Украины", uaMessage.includes("Номер для связи: +380501234567")],
+    ["английский номер не используется как wa.me-ссылка", !ukMessage.includes("wa.me/+447911123456")],
+    ["английский номер не используется как tel-ссылка", !ukMessage.includes("tel:+447911123456")],
     ["номер клиента не используется как wa.me-ссылка", !preOrderMessage.includes("wa.me/79991234567")],
     ["номер клиента не используется как tel-ссылка", !preOrderMessage.includes("tel:+79991234567")],
     ["заказ отправляется менеджеру", buildWhatsAppUrl(CONFIG.whatsappPhone, "Заказ").startsWith(`https://wa.me/${DEFAULT_PHONE}?text=`)],

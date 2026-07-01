@@ -462,6 +462,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .type-options input:focus-visible + span { outline: 3px solid rgba(200,164,103,.55); }
 .field { display: grid; margin-top: 15px; }
 .field small { color: var(--muted); font-weight: 400; }
+.field-hint { margin-top: 6px; font: 12px/1.35 Arial, sans-serif; }
 .field input, .field textarea {
   width: 100%;
   border: 1px solid var(--line);
