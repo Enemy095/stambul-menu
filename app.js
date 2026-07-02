@@ -427,10 +427,12 @@ function buildWhatsAppMessage(order = readOrderData()) {
 }
 
 function buildWhatsAppOrderItemLine(item, index) {
-  const nameLine = `${index + 1}. ${item.name}`;
-  const formula = `   ${formatMoney(item.price)} × ${item.quantity} =`;
+  const prefix = `${index + 1}) [`;
+  const nameLine = `${prefix}${item.quantity} шт] ${item.name}`;
+  const indent = " ".repeat(prefix.length);
+  const formula = `${indent}${item.quantity} × ${formatMoney(item.price)} =`;
   const lineTotal = formatMoney(item.total);
-  const spacesCount = Math.max(1, 34 - formula.length - lineTotal.length);
+  const spacesCount = Math.max(1, 35 - formula.length - lineTotal.length);
   const calculationLine = `${formula}${" ".repeat(spacesCount)}${lineTotal}`;
   return `${nameLine}\n${calculationLine}`;
 }
@@ -621,7 +623,7 @@ function runSelfTests() {
     ["сообщение содержит ДОСТАВКА", deliveryMessage.includes("ДОСТАВКА")],
     ["доставка содержит адрес", deliveryMessage.includes("ул. Ленина, 10")],
     ["сообщение содержит позиции", preOrderMessage.includes("Мерджимек чорбасы") && preOrderMessage.includes("Айран")],
-    ["сообщение содержит двухстрочную позицию", preOrderMessage.includes("1. Мерджимек чорбасы\n") && preOrderMessage.includes("320 ₽ × 3 =") && preOrderMessage.includes("960 ₽")],
+    ["сообщение содержит двухстрочную позицию", preOrderMessage.includes("1) [3 шт] Мерджимек чорбасы\n") && preOrderMessage.includes("3 × 320 ₽ =") && preOrderMessage.includes("960 ₽")],
     ["сообщение содержит сумму", preOrderMessage.includes(`Сумма: ${formatMoney(getCartTotal(testCart))}`)],
     ["сообщение содержит номер клиента", preOrderMessage.includes("Номер для связи: +79991234567")],
     ["сообщение содержит номер Англии", ukMessage.includes("Номер для связи: +447911123456")],
@@ -635,9 +637,11 @@ function runSelfTests() {
     ["изменение количества не вызывает renderMenu", !changeQuantity.toString().includes("renderMenu(")],
     ["сообщение содержит заголовок заказа", messageFormatExample.includes("*Заказ:*")],
     ["список заказа находится в monospace-блоке", messageFormatExample.includes(orderBlockMarker)],
-    ["первая строка содержит только номер и название", orderBlockLines[0] === "1. Мерджимек чорбасы"],
-    ["расчёт находится на следующей строке", orderBlockLines[1]?.includes("320 ₽ × 6 =") && orderBlockLines[1]?.replace(/\u00a0/g, " ").includes("1 920 ₽")],
-    ["строка названия не содержит расчёт", !orderBlockLines[0]?.includes("320 ₽ × 6")],
+    ["первая строка содержит номер, количество и название", orderBlockLines[0] === "1) [6 шт] Мерджимек чорбасы"],
+    ["расчёт находится на следующей строке", orderBlockLines[1]?.includes("6 × 320 ₽ =") && orderBlockLines[1]?.replace(/\u00a0/g, " ").includes("1 920 ₽")],
+    ["количество расчёта выровнено под скобкой", orderBlockLines[1]?.startsWith("    6 ×")],
+    ["двухзначное количество сохраняет выравнивание", buildWhatsAppOrderItemLine({ name: "Айран", price: 180, quantity: 12, total: 2160 }, 1).split("\n")[1].startsWith("    12 ×")],
+    ["строка названия не содержит расчёт", !orderBlockLines[0]?.includes("6 × 320 ₽")],
     ["строка названия не содержит знак равно", !orderBlockLines[0]?.includes("=")],
     ["между позициями нет пустых строк", !orderBlock.includes("\n\n")],
     ["сумма находится вне monospace-блока", messageFormatExample.indexOf("*Сумма:") > messageFormatExample.lastIndexOf("```")],
